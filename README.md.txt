@@ -1,1 +1,0 @@
-This is a temporary repository to show some progress on the course work. (Inache govorya dlya nenuzhnoj procentovki).
