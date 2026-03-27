@@ -1,0 +1,502 @@
+@startuml
+skinparam monochrome true
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam linetype ortho
+
+package "game"{
+
+    class CoreMain {
+        + startGame(): void
+    }
+
+    package "geography" {
+        enum ProvinceType {
+            LAND
+            WATER
+            COASTAL
+        }
+
+        class ProvinceSignature {
+            - name: String
+            - SupplyCenter: boolean
+            - type: ProvinceType
+            + ProvinceSignature(name: String, SupplyCenter: boolean, type: ProvinceType)
+            + getName(): String
+            + isSupplyCenter(): boolean
+            + getType(): ProvinceType
+        }
+
+        class ResolveParameters {
+            - Battled: boolean
+            + ResolveParameters()
+            + isBattled(): boolean
+            + setBattled(Battled: boolean): void
+            + clear(): void
+        }
+
+        class Location {
+            - neighbours: List<Location>
+            - parentProvince: Province
+            + Location(parentProvince: Province)
+            + addNeighbour(neighbour: Location): void
+            + getNeighbours(): List<Location>
+            + getParentProvince(): Province
+            + isArmyLocation(): boolean
+        }
+
+        class Province {
+            - signature: ProvinceSignature
+            - locations: List<Location>
+            - resolveParameters: ResolveParameters
+            - occupyingUnit: Unit
+            + Province(signature: ProvinceSignature, locations: List<Location>)
+            + Province(signature: ProvinceSignature, locations: List<Location>, resolveParameters: ResolveParameters)
+            + Province(signature: ProvinceSignature, locations: List<Location>, occupyingUnit: Unit)
+            + Province(signature: ProvinceSignature, locations: List<Location>, resolveParameters: ResolveParameters, occupyingUnit: Unit)
+            + getName(): String
+            + getType(): ProvinceType
+            + isSupplyCenter(): boolean
+            + getLocations(): List<Location>
+            + getOccupyingUnit(): Unit
+            + setOccupyingUnit(occupyingUnit: Unit): void
+            + release(): void
+            + isOccupied(): boolean
+            + getSignature(): ProvinceSignature
+            + getResolveParameters(): ResolveParameters
+            + isBattled(): boolean
+            + setBattled(battled: boolean): void
+        }
+
+        class Region {
+            - provinces: List<Province>
+            + Region(provinces: List<Province>)
+            + getProvinces(): List<Province>
+        }
+
+        class Map extends Region {
+            + Map(provinces: List<Province>)
+            + resetBattleFlags(): void
+        }
+
+        class Country extends Region {
+            - name: String
+            + Country(name: String, provinces: List<Province>)
+            + resetBattleFlags(): void
+            + getName(): String
+        }
+
+        Province "1" *--> "0..*" Location : contains
+        Province "1" *-- "1" ProvinceSignature : uses
+        Province "1" *-- "1" ResolveParameters : uses
+    }
+
+    package "player" {
+        class Password {
+            - key: String
+            + Password(key: String)
+            + check(attempt: Password): boolean
+            + getKey(): String
+        }
+
+        class Player {
+            - country: Country
+            - password: Password
+            - units: List<Unit>
+            - supplyCenters: List<Province>
+            - ordersSubmitted: boolean
+            + Player(country: Country, password: Password)
+            + Player(country: Country, password: Password, units: List<Unit>, supplyCenters: List<Province>)
+            + getCountry(): Country
+            + getUnits(): List<Unit>
+            + setUnits(units: List<Unit>): void
+            + getSupplyCenters(): List<Province>
+            + setSupplyCenters(supplyCenters: List<Province>): void
+            + isOrdersSubmitted(): boolean
+            + setOrdersSubmitted(flag: boolean): void
+            + tryLogin(p: Password): boolean
+            - getInitialUnits(c: Country): List<Unit>
+        }
+
+        Player "1" *-- "1" Password : uses
+    }
+
+    package "units" {
+        package "utils" {
+            class ConvoyHelper {
+                + CanConvoy(current: Location, end: Location, target: Unit): boolean
+                + getListOfReachableByConvoyLocations(location: Location): List<Location>
+                - doesPathExists(start: Location, targets: List<Location>): boolean
+                - bfsFindAll(start: List<Location>): List<Location>
+                - bfs(queue: Queue<Location>, visited: Set<Location>): Set<Location>
+                - getFleetLocations(location: Location): List<Location>
+                - getArmyLocation(location: Location): Location
+                - locationToList(location: Location): List<Location>
+            }
+        }
+
+        abstract class Unit {
+            - owner: Player
+            - location: Location
+            + Unit(owner: Player, location: Location)
+            + getOwner(): Player
+            + setLocation(location: Location): void
+            + getLocation(): Location
+            + CanMoveTo(target: Location): boolean
+        }
+
+        class Army extends Unit {
+            + Army(owner: Player, location: Location)
+            + canConvoyToFiltred(target: Location): boolean
+            + getListOfReachableByConvoyLocationsFiltred(): List<Location>
+            + canConvoyTo(target: Location): boolean
+            + getListOfReachableByConvoyLocations(): List<Location>
+        }
+
+        class Fleet extends Unit {
+            + Fleet(owner: Player, location: Location)
+            + canConvoy(destination: Location, armyToConvoy: Army): boolean
+        }
+    }
+
+    package "orders" {
+        enum verificationResult {
+            OK
+            WRONG_PHASE
+            WRONG_ORDER_TYPE
+            SELECTED_PROVINCE_NOT_OCCUPIED
+            UNIT_NOT_OWNED_BY_PLAYER
+            DESTINATION_NOT_SET
+            ADDITIONAL_UNIT_NOT_SET
+            DESTINATION_NOT_REACHABLE
+            CANNOT_SUPPORT_HERE
+            MUST_BE_ARMY
+            MUST_BE_FLEET
+            FLEET_MUST_BE_IN_WATER
+            CANNOT_SUPPORT_SELF
+            PROVINCE_ALREADY_OCCUPIED
+            NOT_A_SUPPLY_CENTER
+            NOT_HOME_PROVINCE
+            UNABLE_TO_SPAWN
+        }
+
+        abstract class Order {
+            - executable: boolean
+            + Order()
+            + isExecutable(): boolean
+            + setExecutable(executable: boolean): void
+        }
+
+        abstract class MovementPhaseOrder extends Order {
+            - executor: Unit
+            + MovementPhaseOrder(executor: Unit)
+            + getExecutor(): Unit
+        }
+
+        abstract class SpawnPhaseOrder extends Order {
+            + SpawnPhaseOrder()
+        }
+
+        abstract class RetreatPhaseOrder extends Order {
+            - unitToRetreat: Unit 
+            + RetreatPhaseOrder(unitToRetreat: Unit)
+            + getUnitToRetreat(): Unit
+        }
+
+        class RetreatOrder extends RetreatPhaseOrder {
+            - destination: Location
+            + RetreatOrder(destination: Location, unitToRetreat: Unit)
+            + getDestination(): Location
+        }
+
+        class DieOrder extends RetreatPhaseOrder {
+            + DieOrder(unitToRetreat: Unit)
+        }
+
+        class SpawnOrder extends SpawnPhaseOrder {
+            - destination: Location
+            - player: Player
+            + SpawnOrder(destination: Location, player: Player)
+            + getDestination(): Location
+            + getPlayer(): Player
+        }
+
+        class HoldOrder extends MovementPhaseOrder {
+            + HoldOrder(executor: Unit)
+        }
+
+        class DismissOrder extends SpawnPhaseOrder {
+            - unitToDismiss: Unit
+            + DismissOrder(unitToDismiss: Unit)
+            + getUnitToDismiss(): Unit
+        }
+
+        class MoveOrder extends MovementPhaseOrder {
+            - destination: Location
+            + MoveOrder(destination: Location, executor: Unit)
+            + getDestination(): Location
+        }
+
+        class SupportOrder extends MovementPhaseOrder {
+            - supportedUnit: Unit
+            - destination: Location
+            + SupportOrder(supportedUnit: Unit, destination: Location, executor: Unit)
+            + getSupportedUnit(): Unit
+            + getDestination(): Location
+        }
+
+        class ConvoyOrder extends MovementPhaseOrder {
+            - convoyedArmy: Unit
+            - destination: Location
+            + ConvoyOrder(convoyedArmy: Unit, destination: Location, executor: Unit)
+            + getConvoyedArmy(): Unit
+            + getDestination(): Location
+        }
+
+        class BeConvoyedOrder extends MovementPhaseOrder {
+            - destination: Location
+            + BeConvoyedOrder(destination: Location, executor: Unit)
+            + getDestination(): Location
+        }
+
+        class OrderPrototype {
+            - orderType: OrderType
+            - selectedLocation: Location
+            - destination: Province
+            - ArmyToConvoy: Unit
+            - player: Player
+            + OrderPrototype()
+            + setDestination(destination: Province): void
+            + setOrderType(orderType: OrderType): void
+            + setSelectedLocation(selectedLocation: Location): void
+            + setPlayer(player: Player): void
+            + setArmyToConvoy(ArmyToConvoy: Unit): void
+            + getSelectedLocation(): Location
+            + getDestination(): Province
+            + getOrderType(): OrderType
+            + getPlayer(): Player
+            + getArmyToConvoy(): Unit
+            + isSetDestination(): boolean
+            + isSetSelectedLocation(): boolean
+            + isSetOrderType(): boolean
+            + isSetPlayer(): boolean
+            + isSetArmyToConvoy(): boolean
+            + Clear(): void
+        }
+
+        class OrderCreator {
+            + verifyOrder(prototype: OrderPrototype, phaseType: PhaseType): verificationResult
+            + createOrder(prototype: OrderPrototype, phaseType: PhaseType): Order
+            - checkMovementPhase(prototype: OrderPrototype): verificationResult
+            - checkRetreatPhase(prototype: OrderPrototype): verificationResult
+            - checkSpawnPhase(prototype: OrderPrototype): verificationResult
+            - checkMove(prototype: OrderPrototype): verificationResult
+            - checkSupport(prototype: OrderPrototype): verificationResult
+            - checkConvoy(prototype: OrderPrototype): verificationResult
+            - checkBeConvoyed(prototype: OrderPrototype): verificationResult
+            - checkRetreat(prototype: OrderPrototype): verificationResult
+            - checkSpawn(prototype: OrderPrototype): verificationResult
+            - createMovementPhase(prototype: OrderPrototype): MovementPhaseOrder
+            - createRetreatPhase(prototype: OrderPrototype): RetreatPhaseOrder
+            - createSpawnPhase(prototype: OrderPrototype): SpawnPhaseOrder
+            - validateOwnership(prototype: OrderPrototype): verificationResult
+            - spawnAbleCheck(player: Player, location: Location): boolean
+            - getProvinceLocation(locations: List<Location>, province: Province): Location
+        }
+
+        OrderCreator ..> Order : creates
+        OrderPrototype --> OrderCreator : used by
+    }
+
+    package "utils" {
+        enum PhaseType {
+            MOVEMENT
+            RETREAT
+            SPAWN
+        }
+
+        enum OrderType {
+            MOVE
+            HOLD
+            SUPPORT
+            CONVOY
+            BECONVOYED
+            RETREAT
+            SPAWN
+            DISMISS
+            DIE
+        }
+    }
+
+    package "engine" {
+        enum Season {
+            SPRING
+            FALL
+        }
+
+        class TurnClassificator {
+            - turnNumber: int
+            - season: Season
+            - phase: PhaseType
+            + TurnClassificator(turn: int, season: Season, phase: PhaseType)
+            + getPhaseClassPhase(): Phase
+            + equals(turn: TurnClassificator): boolean
+            + less(turn: TurnClassificator): boolean
+            + getTurnNumber(): int
+            + getSeason(): Season
+            + getPhase(): PhaseType
+        }
+
+        class GameMaster {
+            - turn: TurnClassificator
+            - map: Map
+            - players: List<Player>
+            - history: History
+            + advancePhase(): void
+            + getTurnClassificator(): TurnClassificator
+            + getMap(): Map
+            + getPlayers(): List<Player>
+            + getUnits(): List<Unit>
+        }
+
+        interface Phase {
+            + addOrder(order: Order): void
+            + resolve(gameMaster: GameMaster): void
+            + nextPhase(turnClassificator: TurnClassificator): Phase
+            + getPhaseType(): PhaseType
+        }
+
+        class MovementPhase implements Phase {
+            - orders: List<MovementPhaseOrder>
+        }
+
+        class RetreatPhase implements Phase {
+            - retreatOrders: List<RetreatPhaseOrder>
+        }
+
+        class SpawnPhase implements Phase {
+            - spawnOrders: List<SpawnPhaseOrder>
+        }
+
+        class Resolver {
+            + resolveMovements(orders: List<MovementPhaseOrder>, gameMaster: GameMaster): void
+            + resolveRetreats(retreatOrders: List<RetreatPhaseOrder>, gameMaster: GameMaster): void
+            + resolveSpawns(spawnOrders: List<SpawnPhaseOrder>, gameMaster: GameMaster): void
+        }
+
+        class Executor {
+            + beginExecuteMovements(orders: List<MoveOrder>, gameMaster: GameMaster): void
+            + endExecuteMovements(orders: List<MoveOrder>, gameMaster: GameMaster): void
+            + executeRetreats(retreatOrders: List<RetreatOrder>, dismissOrders: List<DismissOrder>, gameMaster: GameMaster): void
+            + executeSpawns(spawnOrders: List<SpawnOrder>, dismissOrders: List<DismissOrder>, gameMaster: GameMaster): void
+        }
+
+        GameMaster "1" *-- "1" Phase : current
+        GameMaster "1" o-- "1" Map
+        GameMaster "1" o-- "1" TurnClassificator: contains
+        GameMaster "1" o-- "0..*" Player
+        Phase --> Resolver : uses
+        Phase --> Executor : uses
+        Phase --> Order: stores
+    }
+
+    package "save" {
+        package "gameHistory" {
+            class History {
+                - history: List<HistoryPhase>
+                + addHistoryPhase(hp: HistoryPhase): void
+                + getHistoryPhase(turn: TurnClassificator): HistoryPhase
+            }
+
+            class HistoryPhase {
+                - turn: TurnClassificator
+                - orders: List<Order>
+            }
+        }
+
+        package "saveData" {
+            enum SaveType {
+                FULL
+                HISTORY_ONLY
+            }
+
+            interface SaveContainer {
+                + getType(): SaveType
+            }
+
+            class FullGameSave implements SaveContainer {
+                + history: History
+                + map: Map
+                + players: List<Player>
+            }
+
+            class HistoryOnlySave implements SaveContainer {
+                + history: History
+            }
+        }
+
+        class SaveManager {
+            - MAGIC_NUMBER: long
+            + save(data: SaveContainer, path: String): void
+            + load(file: File): SaveContainer
+        }
+    }
+
+    package "control TO DO" {
+        enum InputHandlerStatusReturn{
+            UNITSETTED
+            NOUNIT
+            WRONGUNIT
+            DESTINATIONCONWOYSETTED
+            DESTINATIONMOVESETTED
+            WRONGDESTINATION
+        }
+
+        class InputHandler{
+            - activePlayer: Player
+            - iputedOrder: OrderPrototype
+            - gameMaster: GameMaster
+            + handleProvinceClick(province: Province): InputHandlerStatusReturn
+            + sendFormedOrder(): boolean
+            + setOrderType(): boolean
+            + specifyDestination(destination: Location): void
+            + exitPlayer(): void
+            + loginPlayer(player: Player, password: Password): boolean
+            + getMap(): Map
+        }
+
+        class MapInputController{
+            - inputHandler: InputHandler
+            + provinceClick(province: Province): void
+            + orderSendClick(orderType: OrderType, location: Location): void
+            + locationChange(newLocation: Location): void
+            + orderTypeChange(newOrderType: OrderType): void
+            + setNewPossibleOrderType(possibleOrderType: OrderType): void
+            + showPossibleMoves(unit: Unit): void
+            + showInfo(province: Province): void
+        }
+
+        InputHandler "1" <-- "1" MapInputController : provides data in right form from player
+        InputHandler *-- GameMaster
+        InputHandler o-- Player : active
+        InputHandler ..> OrderPrototype : creates and fills
+    }
+
+    package "TODO"{
+        class Menu
+        package "mainMenu"{
+        }
+
+        package "gameInitialization"{
+        }
+    }
+
+    Player "1" o-- "0..*" Unit : owns
+    Player "1" --> "1" Country : rules
+    Country "1" o-- "0..*" Province : home territories
+    Unit --> Location : located at
+    Province "1" o-- "0..1" Unit : unit (if any)
+    Map "1" *-- "0..*" Province : contains
+
+}
+@enduml
